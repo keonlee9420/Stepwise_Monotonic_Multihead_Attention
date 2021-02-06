@@ -28,6 +28,7 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
         self.last_layer = nn.Linear(n_head*d_v, d_model)
+        self.layer_norm = nn.LayerNorm(d_model)
 
         self.is_tunable = is_tunable
 
@@ -101,28 +102,28 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
                 aw_prev = k.new_zeros(batch_size*self.n_head, qlen, 1) # [batch*n_head, qlen, 1]
                 aw_prev[:, 0:1] = k.new_ones(batch_size*self.n_head, 1, 1) # initialize with [1, 0, 0 ... 0]
             alpha, _ = self.expectation(e, aw_prev) # [batch*n_head, qlen, klen]
-            alpha, fr_max = self.focused_head(alpha, mel_len)
-            alpha = self.dropout(alpha) # [batch, qlen, klen]
+            alpha, fr_max = self.focused_head(alpha, mel_len) # alpha: [batch, qlen, klen]
 
             # Calculate context vector
             v = v.reshape(self.n_head, batch_size, klen, -1).permute(1, 2, 0, 3) # [batch, klen, n_head, d_v]
             cv = torch.bmm(alpha, v.reshape(batch_size, klen, -1)) # [batch, qlen, n_head*d_v]
         else:
-            # Get focused alpha
-            alpha = F.softmax(e, dim=-1) # [batch*n_head, qlen, klen]
-            alpha_cv = self.dropout(alpha) # [batch*n_head, qlen, klen]
+            alpha_cv = F.softmax(e, dim=-1) # [batch*n_head, qlen, klen]
 
             # Masking to ignore padding (query side)
             if query_mask is not None:
                 query_mask = self.repeat_mask_multihead(query_mask.repeat(1, 1, klen))
-                alpha = alpha.masked_fill(query_mask, 0.)
-            alpha, fr_max = self.focused_head(alpha, mel_len) # [batch, qlen, klen]
+                alpha_cv = alpha_cv.masked_fill(query_mask, 0.)
+
+            # Get focused alpha
+            alpha, fr_max = self.focused_head(alpha_cv, mel_len) # [batch, qlen, klen]
 
             # Calculate normal multihead attention
             cv = torch.bmm(alpha_cv, v).reshape(self.n_head, batch_size, qlen, -1).permute(1, 2, 0, 3) # [batch, qlen, n_head, d_v]
             cv = cv.reshape(batch_size, qlen, -1) # [batch, qlen, n_head*d_v]
 
-        cv = self.last_layer(cv)
+        cv = self.dropout(self.last_layer(cv))
+        cv = self.layer_norm(cv)
         return cv, alpha, fr_max
 
 
