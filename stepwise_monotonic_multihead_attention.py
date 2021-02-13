@@ -37,14 +37,14 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
         noise = xs.new_zeros(xs.size()).normal_(std=std)
         return xs + noise
 
-    def expectation(self, e, aw_prev):
+    def expectation(self, e, aw_prev, n_head):
         """
         e --- [batch*n_head, qlen, klen]
         aw_prev --- [batch*n_head, qlen, 1]
         See https://gist.github.com/mutiann/38a7638f75c21479582d7391490df37c
         See https://github.com/hirofumi0810/neural_sp/blob/093bfade110d5a15a4f7a58fffe8d235acbfe14f/neural_sp/models/modules/mocha.py#L430
         """
-        batch_size, qlen, klen = aw_prev.size(0)//self.n_head, e.size(1), e.size(2)
+        batch_size, qlen, klen = aw_prev.size(0)//n_head, e.size(1), e.size(2)
 
         # Compute probability sampling matrix P
         p_sample = torch.sigmoid(self.add_gaussian_noise(e, self.noise_std))  # [batch*n_head, qlen, klen]
@@ -53,7 +53,7 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
         # Compute recurrence relation solution along mel frame domain
         for i in range(klen):
             p_sample_i = p_sample[:, :, i:i + 1]
-            pad = torch.zeros([batch_size*self.n_head, 1, 1], dtype=aw_prev.dtype).to(aw_prev.device)
+            pad = torch.zeros([batch_size*n_head, 1, 1], dtype=aw_prev.dtype).to(aw_prev.device)
             aw_prev = aw_prev * p_sample_i + torch.cat(
                     (pad, aw_prev[:, :-1, :] * (1.0 - p_sample_i[:, :-1, :])), dim=1)
             alpha.append(aw_prev)
@@ -96,35 +96,35 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
         # Calculate energy
         e, v = self.energy(q, k, v, mask)  # [batch*n_head, qlen, klen], [batch*n_head, klen, d_v]
 
+        # Get alpha
+        alpha_cv = F.softmax(e, dim=-1) # [batch*n_head, qlen, klen]
+
+        # Masking to ignore padding (query side)
+        if query_mask is not None:
+            query_mask = self.repeat_mask_multihead(query_mask.repeat(1, 1, klen))
+            alpha_cv = alpha_cv.masked_fill(query_mask, 0.)
+
+        # Get focused alpha
+        alpha_fc, fr_max = self.focused_head(alpha_cv, mel_len) # [batch, qlen, klen]
+
         if self.is_tunable:
-            # Get alpha
+            # Monotonic enhancement
             if aw_prev is None:
-                aw_prev = k.new_zeros(batch_size*self.n_head, qlen, 1) # [batch*n_head, qlen, 1]
-                aw_prev[:, 0:1] = k.new_ones(batch_size*self.n_head, 1, 1) # initialize with [1, 0, 0 ... 0]
-            alpha, _ = self.expectation(e, aw_prev) # [batch*n_head, qlen, klen]
-            alpha, fr_max = self.focused_head(alpha, mel_len) # alpha: [batch, qlen, klen]
+                aw_prev = k.new_zeros(batch_size, qlen, 1) # [batch, qlen, 1]
+                aw_prev[:, 0:1] = k.new_ones(batch_size, 1, 1) # initialize with [1, 0, 0 ... 0]
+            alpha_me, _ = self.expectation(alpha_fc, aw_prev, 1) # [batch, qlen, klen]
 
             # Calculate context vector
             v = v.reshape(self.n_head, batch_size, klen, -1).permute(1, 2, 0, 3) # [batch, klen, n_head, d_v]
-            cv = torch.bmm(alpha, v.reshape(batch_size, klen, -1)) # [batch, qlen, n_head*d_v]
+            cv = torch.bmm(alpha_me, v.reshape(batch_size, klen, -1)) # [batch, qlen, n_head*d_v]
         else:
-            alpha_cv = F.softmax(e, dim=-1) # [batch*n_head, qlen, klen]
-
-            # Masking to ignore padding (query side)
-            if query_mask is not None:
-                query_mask = self.repeat_mask_multihead(query_mask.repeat(1, 1, klen))
-                alpha_cv = alpha_cv.masked_fill(query_mask, 0.)
-
-            # Get focused alpha
-            alpha, fr_max = self.focused_head(alpha_cv, mel_len) # [batch, qlen, klen]
-
             # Calculate normal multihead attention
             cv = torch.bmm(alpha_cv, v).reshape(self.n_head, batch_size, qlen, -1).permute(1, 2, 0, 3) # [batch, qlen, n_head, d_v]
             cv = cv.reshape(batch_size, qlen, -1) # [batch, qlen, n_head*d_v]
 
         cv = self.dropout(self.last_layer(cv))
         cv = self.layer_norm(cv)
-        return cv, alpha, fr_max
+        return cv, alpha_fc, fr_max
 
 
 class MultiheadEnergy(nn.Module):
