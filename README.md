@@ -2,7 +2,7 @@
 
 Pytorch Implementation of Stepwise Monotonic Multihead Attention (SMMA) similar to [Enhancing Monotonicity for Robust Autoregressive Transformer TTS](https://www.isca-speech.org/archive/Interspeech_2020/pdfs/1751.pdf)
 
-The monotomic enhancement is applied as follows.
+The monotomic enhancement with SMMA can be applied as follows.
 
 <p align="center">
     <img src="figs/figure1.png" width="50%">
