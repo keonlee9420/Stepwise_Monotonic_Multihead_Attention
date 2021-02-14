@@ -60,6 +60,8 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
 
         alpha = torch.cat(alpha, dim=-1) if klen > 1 else alpha[-1] # [batch*n_head, qlen, klen]
 
+        assert not torch.isnan(alpha).any(), "NaN detected in alpha."
+
         return alpha, p_sample
 
     def focused_head(self, multihead, mel_len):
