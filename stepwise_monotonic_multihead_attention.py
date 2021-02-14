@@ -47,7 +47,7 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
         batch_size, qlen, klen = aw_prev.size(0)//n_head, e.size(1), e.size(2)
 
         # Compute probability sampling matrix P
-        p_sample = torch.sigmoid(self.add_gaussian_noise(e, self.noise_std))  # [batch*n_head, qlen, klen]
+        p_sample = torch.sigmoid(self.add_gaussian_noise(e, self.noise_std) if self.training else e)  # [batch*n_head, qlen, klen]
 
         alpha = []
         # Compute recurrence relation solution along mel frame domain
