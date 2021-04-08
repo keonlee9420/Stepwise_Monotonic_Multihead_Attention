@@ -18,9 +18,9 @@ class StepwiseMonotonicMultiheadAttention(nn.Module):
 
     def __init__(self, d_model, d_k, d_v, 
                                     noise_std=1.0, 
-                                    n_head=hp.smma_head,
-                                    dropout=hp.smma_dropout, 
-                                    is_tunable=hp.smma_tunable):
+                                    n_head=hp.sma_head,
+                                    dropout=hp.sma_dropout, 
+                                    is_tunable=hp.sma_tunable):
         super(StepwiseMonotonicMultiheadAttention, self).__init__()
         self.n_head = n_head
         self.noise_std = noise_std
