@@ -50,6 +50,19 @@ As you can see, SMA returns the text-audio fusion in text size (`seq_len`) regar
 4. During tunning phase (monotonic enhancement) with SMA, the `focused_head` function will select the best diagonal (monotonically increasing) alignment among heads. It follows the 'focus rate' in [FastSpeech](https://arxiv.org/pdf/1905.09263.pdf) framework as in the reference paper. Different from the reference paper, the maximum focus rated head is selected rather than by threshold. However, you can adopt it by simply adding `prefixed_threshold`(e.g.,`0.5`) to the `focused_head` function.
 5. You can enjoy my code, and any suggestions are appreciated.
 
+# Citation
+
+```
+@misc{lee2021sma,
+  author = {Lee, Keon},
+  title = {Stepwise_Monotonic_Multihead_Attention},
+  year = {2021},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/keonlee9420/Stepwise_Monotonic_Multihead_Attention}}
+}
+```
+
 # References
 
 - [Online and Linear-Time Attention by Enforcing Monotonic Alignments](https://arxiv.org/pdf/1704.00784.pdf)
